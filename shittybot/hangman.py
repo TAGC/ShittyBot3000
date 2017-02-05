@@ -1,7 +1,7 @@
 import random
+import re
 import textwrap
 
-import re
 from discord.ext import commands
 
 
@@ -9,6 +9,9 @@ class HangmanCog(object):
     def __init__(self, bot: commands.Bot):
         self._bot = bot
         self._session = None
+
+        with open('hangman.dat') as f:
+            self._word_list = f.read().splitlines()
 
     @property
     def _usage(self):
@@ -22,7 +25,7 @@ class HangmanCog(object):
             if self._session is None:
                 await self._bot.say(self._usage)
             else:
-                guess = await self._try_parse_hangman_guess('^.hangman (?P<guess>\w+)\s*$', ctx.message.content)
+                guess = await self._try_parse_hangman_guess('^.hangman\s+(?P<guess>\w+)\s*$', ctx.message.content)
                 await self._make_guess(ctx.message.author, guess)
 
     @hangman.command()
@@ -34,7 +37,7 @@ class HangmanCog(object):
         if self._session:
             return await self._bot.say('Hangman session already in progress')
 
-        self._session = Hangman(['foo', 'bar', 'baz'])
+        self._session = Hangman(self._word_list)
         await self._bot.say('Started new hangman session...```\n{}```'.format(self._session))
 
     @hangman.command()
