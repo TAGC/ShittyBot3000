@@ -8,7 +8,7 @@ from discord.ext import commands
 class HangmanCog(object):
     def __init__(self, bot: commands.Bot):
         self._bot = bot
-        self._session = None
+        self._sessions = dict()
 
         with open('hangman.dat') as f:
             self._word_list = f.read().splitlines()
@@ -22,36 +22,40 @@ class HangmanCog(object):
     @commands.group(pass_context=True)
     async def hangman(self, ctx):
         if ctx.invoked_subcommand is None:
-            if self._session is None:
+            channel = ctx.message.channel
+            if self._session_for_channel(channel) is None:
                 await self._bot.say(self._usage)
             else:
                 guess = await self._try_parse_hangman_guess('^.hangman\s+(?P<guess>\w+)\s*$', ctx.message.content)
-                await self._make_guess(ctx.message.author, guess)
+                await self._make_guess(ctx.message.author, channel, guess)
 
     @hangman.command()
     async def help(self):
         await self._bot.say(self._usage)
 
-    @hangman.command()
-    async def start(self):
-        if self._session:
+    @hangman.command(pass_context=True)
+    async def start(self, ctx):
+        channel = ctx.message.channel
+        if self._session_for_channel(channel):
             return await self._bot.say('Hangman session already in progress')
 
-        self._session = Hangman(self._word_list)
-        await self._bot.say('Started new hangman session...```\n{}```'.format(self._session))
+        self._sessions[channel] = Hangman(self._word_list)
+        await self._bot.say('Started new hangman session...```\n{}```'.format(self._sessions[channel]))
 
-    @hangman.command()
-    async def stop(self):
-        if not self._session:
+    @hangman.command(pass_context=True)
+    async def stop(self, ctx):
+        channel = ctx.message.channel
+        if not self._session_for_channel(channel):
             return await self._bot.say('No hangman session in progress')
 
         await self._bot.say('Hangman session ended')
-        self._session = None
+        del self._sessions[channel]
 
     @hangman.command(pass_context=True)
     async def guess(self, ctx, letter_or_word: str):
-        guess = await self._try_parse_hangman_guess('^\s*(?P<guess>\w+)\s*$', letter_or_word)
-        await self._make_guess(ctx.message.author, guess)
+        author = ctx.message.author
+        channel = ctx.message.channel
+        await self._make_guess(author, channel, letter_or_word)
 
     async def _try_parse_hangman_guess(self, pattern, content):
         try:
@@ -59,25 +63,32 @@ class HangmanCog(object):
         except AttributeError:
             await self._bot.say('Invalid guess: "{}"'.format(content))
 
-    async def _make_guess(self, user, letter_or_word):
-        if not self.hangman:
+    async def _make_guess(self, user, channel, letter_or_word):
+        session = self._session_for_channel(channel)
+        if not session:
             return await self._bot.say('No hangman session in progress')
 
-        answer = self._session.answer
+        answer = session.answer
 
-        self._session.guess(letter_or_word)
+        session.guess(letter_or_word)
 
-        if self._session.is_game_won:
+        if session.is_game_won:
             await self._bot.say(
-                '```{}```\nCongratulations {}! The word was "{}"'.format(self._session, user.name, answer))
-            self._session = None
+                '```{}```\nCongratulations {}! The word was "{}"'.format(session, user.name, answer))
+            del self._sessions[channel]
 
-        elif self._session.is_game_lost:
-            await self._bot.say('```{}```\nUnlucky! The word was "{}"'.format(self._session, answer))
-            self._session = None
+        elif session.is_game_lost:
+            await self._bot.say('```{}```\nUnlucky! The word was "{}"'.format(session, answer))
+            del self._sessions[channel]
 
         else:
-            await self._bot.say('```{}```'.format(self._session))
+            await self._bot.say('```{}```'.format(session))
+
+    def _session_for_channel(self, channel):
+        if channel in self._sessions:
+            return self._sessions[channel]
+        else:
+            return None
 
 
 class Hangman(object):
