@@ -166,7 +166,7 @@ class Hangman(object):
     ]
 
     def __init__(self, possible_words):
-        self.answer = random.choice(possible_words)
+        self.answer = random.choice(possible_words).lower()
         self._guessed_letters = set()
         self._guessed_words = set()
 
@@ -197,9 +197,9 @@ class Hangman(object):
             raise Exception('Hangman game is over')
 
         if len(letter_or_word) == 1:
-            self._guessed_letters.add(letter_or_word)
+            self._guessed_letters.add(letter_or_word.lower())
         else:
-            self._guessed_words.add(letter_or_word)
+            self._guessed_words.add(letter_or_word.lower())
 
     def __repr__(self):
         figure = textwrap.dedent(self.STATES[self._wrong_guesses])
