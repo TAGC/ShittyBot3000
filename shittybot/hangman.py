@@ -4,11 +4,13 @@ import textwrap
 
 from discord.ext import commands
 
+from shittybot.session import SessionManager
+
 
 class HangmanCog(object):
     def __init__(self, bot: commands.Bot):
         self._bot = bot
-        self._sessions = dict()
+        self._sessions = SessionManager(lambda: Hangman(self._word_list))
 
         with open('hangman.dat') as f:
             self._word_list = f.read().splitlines()
@@ -23,7 +25,7 @@ class HangmanCog(object):
     async def hangman(self, ctx):
         if ctx.invoked_subcommand is None:
             channel = ctx.message.channel
-            if self._session_for_channel(channel) is None:
+            if not self._sessions.session_exists_for_channel(channel):
                 await self._bot.say(self._usage)
             else:
                 guess = await self._try_parse_hangman_guess('^.hangman\s+(?P<guess>\w+)\s*$', ctx.message.content)
@@ -36,20 +38,20 @@ class HangmanCog(object):
     @hangman.command(pass_context=True)
     async def start(self, ctx):
         channel = ctx.message.channel
-        if self._session_for_channel(channel):
+        if self._sessions.session_exists_for_channel(channel):
             return await self._bot.say('Hangman session already in progress')
 
-        self._sessions[channel] = Hangman(self._word_list)
-        await self._bot.say('Started new hangman session...```\n{}```'.format(self._sessions[channel]))
+        session = self._sessions.get_or_create_session(channel)
+        await self._bot.say('Started new hangman session...```\n{}```'.format(session))
 
     @hangman.command(pass_context=True)
     async def stop(self, ctx):
         channel = ctx.message.channel
-        if not self._session_for_channel(channel):
+        if not self._sessions.session_exists_for_channel(channel):
             return await self._bot.say('No hangman session in progress')
 
         await self._bot.say('Hangman session ended')
-        del self._sessions[channel]
+        self._sessions.destroy_session(channel)
 
     @hangman.command(pass_context=True)
     async def guess(self, ctx, letter_or_word: str):
@@ -64,8 +66,9 @@ class HangmanCog(object):
             await self._bot.say('Invalid guess: "{}"'.format(content))
 
     async def _make_guess(self, user, channel, letter_or_word):
-        session = self._session_for_channel(channel)
-        if not session:
+        try:
+            session = self._sessions.get_session(channel)
+        except ValueError:
             return await self._bot.say('No hangman session in progress')
 
         answer = session.answer
@@ -75,20 +78,14 @@ class HangmanCog(object):
         if session.is_game_won:
             await self._bot.say(
                 '```{}```\nCongratulations {}! The word was "{}"'.format(session, user.name, answer))
-            del self._sessions[channel]
+            self._sessions.destroy_session(channel)
 
         elif session.is_game_lost:
             await self._bot.say('```{}```\nUnlucky! The word was "{}"'.format(session, answer))
-            del self._sessions[channel]
+            self._sessions.destroy_session(channel)
 
         else:
             await self._bot.say('```{}```'.format(session))
-
-    def _session_for_channel(self, channel):
-        if channel in self._sessions:
-            return self._sessions[channel]
-        else:
-            return None
 
 
 class Hangman(object):

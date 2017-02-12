@@ -2,11 +2,17 @@ import random
 import re
 from discord.ext import commands
 
+from shittybot.session import SessionManager
+
 
 class HotOrColdCog(object):
+    min_guess = 0
+    max_guess = 100
+    num_guesses = 7
+
     def __init__(self, bot: commands.Bot):
         self._bot = bot
-        self._sessions = dict()
+        self._sessions = SessionManager(lambda: HotOrCold(self.min_guess, self.max_guess, self.num_guesses))
 
     @property
     def _usage(self):
@@ -18,7 +24,7 @@ class HotOrColdCog(object):
     async def hotcold(self, ctx):
         if ctx.invoked_subcommand is None:
             channel = ctx.message.channel
-            if self._session_for_channel(channel) is None:
+            if not self._sessions.session_exists_for_channel(channel):
                 await self._bot.say(self._usage)
             else:
                 guess = int(await self._try_parse_guess('^.hotcold\s+(?P<guess>\d+)\s*$', ctx.message.content))
@@ -31,24 +37,21 @@ class HotOrColdCog(object):
     @hotcold.command(pass_context=True)
     async def start(self, ctx):
         channel = ctx.message.channel
-        if self._session_for_channel(channel):
+        if self._sessions.session_exists_for_channel(channel):
             return await self._bot.say('Hot Or Cold session already in progress')
 
-        min_guess = 0
-        max_guess = 100
-        num_guesses = 7
-        self._sessions[channel] = HotOrCold(min_guess, max_guess, num_guesses)
+        self._sessions.create_session(channel)
         await self._bot.say('Started new Hot Or Cold session. Guess a number between {} and {}. You have {} guesses!'
-                            .format(min_guess, max_guess, num_guesses))
+                            .format(self.min_guess, self.max_guess, self.num_guesses))
 
     @hotcold.command(pass_context=True)
     async def stop(self, ctx):
         channel = ctx.message.channel
-        if not self._session_for_channel(channel):
+        if not self._sessions.session_exists_for_channel(channel):
             return await self._bot.say('No Hot Or Cold session in progress')
 
         await self._bot.say('Hot Or Cold session ended')
-        del self._sessions[channel]
+        self._sessions.destroy_session(channel)
 
     async def _try_parse_guess(self, pattern, content):
         try:
@@ -57,8 +60,9 @@ class HotOrColdCog(object):
             await self._bot.say('Invalid guess: "{}"'.format(content))
 
     async def _make_guess(self, user, channel, number):
-        session = self._session_for_channel(channel)
-        if not session:
+        try:
+            session = self._sessions.get_session(channel)
+        except ValueError:
             return await self._bot.say('No Hot Or Cold session in progress')
 
         answer = session.answer
@@ -67,20 +71,14 @@ class HotOrColdCog(object):
 
         if session.is_game_won:
             await self._bot.say('Congratulations {}! The number was {}'.format(user.name, answer))
-            del self._sessions[channel]
+            self._sessions.destroy_session(channel)
 
         elif session.is_game_lost:
             await self._bot.say('Unlucky! The number was {}'.format(answer))
-            del self._sessions[channel]
+            self._sessions.destroy_session(channel)
 
         else:
             await self._bot.say('```{}```'.format(session))
-
-    def _session_for_channel(self, channel):
-        if channel in self._sessions:
-            return self._sessions[channel]
-        else:
-            return None
 
 
 class HotOrCold(object):
