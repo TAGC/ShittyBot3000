@@ -6,6 +6,7 @@ from shittybot.config import TOKEN
 from shittybot.hangman import HangmanCog
 from shittybot.hotorcold import HotOrColdCog
 from shittybot.chance import ChanceCog
+from shittybot.rps import RockPaperScissorsCog
 
 bot = commands.Bot(command_prefix='!', description="ThymineC's shitty bot")
 
@@ -23,4 +24,5 @@ if __name__ == '__main__':
     bot.add_cog(HangmanCog(bot))
     bot.add_cog(HotOrColdCog(bot))
     bot.add_cog(ChanceCog(bot))
+    bot.add_cog(RockPaperScissorsCog(bot))
     bot.run(TOKEN)
