@@ -48,9 +48,6 @@ class RockPaperScissorsCog(object):
             await asyncio.sleep(0.3)
 
         session = self._sessions.get_or_create_session(channel)
-        session.make_choice('Tom', RpsChoice.PAPER)
-        session.make_choice('Jerry', RpsChoice.SCISSORS)
-        session.make_choice('Adam', RpsChoice.SCISSORS)
         await session.wait()
         assert session.is_game_over
 
